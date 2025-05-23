@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rulu webhook spammer</title>
+    <style>
+        body { font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #36393f; color: #dcddde; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+        .container { background-color: #2f3136; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px 0 rgba(0, 0, 0, 0.2); text-align: center; width: 450px; max-width: 90%; }
+        .container h1 { font-size: 1.5em; color: #fff; margin-top: 10px; margin-bottom: 25px; }
+        .input-group { margin-bottom: 18px; text-align: left; }
+        .input-group label { display: block; margin-bottom: 8px; font-size: 0.95em; color: #8e9297; }
+        .input-group input, .input-group textarea { width: calc(100% - 20px); padding: 12px; border: 1px solid #23272a; border-radius: 4px; font-size: 1em; background-color: #40444b; color: #dcddde; transition: border-color 0.2s ease-in-out; }
+        .input-group input:focus, .input-group textarea:focus { border-color: #7289da; outline: none; }
+        .input-group textarea { resize: vertical; min-height: 80px; }
+        button { padding: 12px 25px; font-size: 1em; border: none; border-radius: 4px; cursor: pointer; margin: 8px; transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out; }
+        button#send { background-color: #7289da; color: white; }
+        button#send:hover { background-color: #677bc4; }
+        button#stop { background-color: #f04747; color: white; }
+        button#stop:hover { background-color: #cc3c3c; }
+        button:disabled { background-color: #5b626e; cursor: not-allowed; color: #b7b7b7; }
+        .webhook-list { margin-bottom: 20px; }
+        .webhook-item { display: flex; align-items: center; margin-bottom: 10px; }
+        .webhook-item input { flex-grow: 1; margin-right: 10px; }
+        .remove-webhook-btn { background-color: #f04747; color: white; border: none; border-radius: 4px; padding: 8px 12px; cursor: pointer; font-size: 0.85em; }
+        .remove-webhook-btn:hover { background-color: #cc3c3c; }
+        .add-webhook-btn { background-color: #43b581; color: white; border: none; border-radius: 4px; padding: 10px 15px; cursor: pointer; margin-top: 10px; }
+        .add-webhook-btn:hover { background-color: #3aa877; }
+        .log-container { margin-top: 25px; text-align: left; background-color: #202225; padding: 15px; border-radius: 4px; max-height: 200px; overflow-y: auto; border: 1px solid #23272a; }
+        .log-container p { margin: 5px 0; font-size: 0.85em; color: #b9bbbe; word-wrap: break-word; }
+        .log-container p.success { color: #43b581; }
+        .log-container p.error { color: #f04747; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Rulu webhook spammer</h1>
+
+        <div class="input-group">
+            <label>Webhook URL(s)</label>
+            <div id="webhook-urls" class="webhook-list">
+                <div class="webhook-item">
+                    <input type="url" class="webhook-input" placeholder="例: https://discord.com/api/webhooks/...">
+                    <button class="remove-webhook-btn" style="display:none;">削除</button>
+                </div>
+            </div>
+            <button id="add-webhook" class="add-webhook-btn">Webhook URLを追加</button>
+        </div>
+
+        <div class="input-group">
+            <label for="username">Webhookの名前 (任意)</label>
+            <input type="text" id="username" placeholder="例: RuLu Bot">
+        </div>
+        <div class="input-group">
+            <label for="avatar_url">WebhookのアイコンURL (任意)</label>
+            <input type="url" id="avatar_url" placeholder="例: https://example.com/avatar.png">
+        </div>
+        <div class="input-group">
+            <label for="message">メッセージ</label>
+            <textarea id="message" placeholder="ここにメッセージを入力..."></textarea>
+        </div>
+        <div class="input-group">
+            <label for="random_length">メッセージに付加するランダムな英数字の長さ (任意, 0で無効)</label>
+            <input type="number" id="random_length" min="0" value="0">
+        </div>
+        <div class="input-group">
+            <label for="count">送信回数</label>
+            <input type="number" id="count" min="1" max="1000" value="1">
+        </div>
+        <div class="input-group">
+            <label for="delay">送信間隔 (ミリ秒)</label>
+            <input type="number" id="delay" min="0" value="500">
+        </div>
+        <button id="send">送信</button>
+        <button id="stop" disabled>停止</button>
+
+        <div class="log-container">
+            <p><strong>ログ:</strong></p>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        const s = document.getElementById('send'), t = document.getElementById('stop'), a = document.getElementById('add-webhook'), w = document.getElementById('webhook-urls'), l = document.getElementById('log');
+        let i = false, c = null;
+
+        function al(m, y = '') {
+            const p = document.createElement('p');
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${m}`;
+            if (y) p.classList.add(y);
+            l.prepend(p);
+            if (l.children.length > 50) l.removeChild(l.lastChild);
+        }
+
+        function awif() {
+            const d = document.createElement('div');
+            d.classList.add('webhook-item');
+            const e = document.createElement('input');
+            e.type = 'url';
+            e.classList.add('webhook-input');
+            e.placeholder = '\u4f8b: https://discord.com/api/webhooks/...';
+            const f = document.createElement('button');
+            f.classList.add('remove-webhook-btn');
+            f.textContent = '\u524a\u9664';
+            f.addEventListener('click', () => {
+                w.removeChild(d);
+                urbv();
+            });
+            d.appendChild(e);
+            d.appendChild(f);
+            w.appendChild(d);
+            urbv();
+        }
+
+        function urbv() {
+            const g = document.querySelectorAll('.webhook-input'), h = document.querySelectorAll('.remove-webhook-btn');
+            g.length <= 1 ? h.forEach(j => j.style.display = 'none') : h.forEach(k => k.style.display = 'inline-block');
+        }
+
+        urbv();
+        a.addEventListener('click', awif);
+
+        function grs(len) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let res = '';
+            for (let x = 0; x < len; x++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+            return res;
+        }
+
+        s.addEventListener('click', async () => {
+            const urls = Array.from(document.querySelectorAll('.webhook-input')).map(inp => inp.value.trim()).filter(url => url !== '');
+            const msg = document.getElementById('message').value, un = document.getElementById('username').value, av = document.getElementById('avatar_url').value;
+            const rlen = parseInt(document.getElementById('random_length').value, 10) || 0;
+            const cnt = parseInt(document.getElementById('count').value, 10), dly = parseInt(document.getElementById('delay').value, 10);
+
+            if (urls.length === 0 || !msg || cnt <= 0) {
+                alert('\u5168\u3066\u306e\u5fc5\u8981\u30d5\u30a3\u30fc\u30eb\u30c9\u3092\u6b63\u3057\u304f\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+                return;
+            }
+
+            i = true; s.disabled = true; t.disabled = false; a.disabled = true;
+            document.querySelectorAll('.remove-webhook-btn').forEach(btn => btn.disabled = true);
+            c = new AbortController();
+            al('\u9001\u4fe1\u3092\u958b\u59cb\u3057\u307e\u3057\u305f\u3002', 'success');
+
+            for (let n = 0; n < cnt; n++) {
+                if (!i) { al('\u30e6\u30fc\u30b6\u30fc\u306b\u3088\u3063\u3066\u9001\u4fe1\u304c\u505c\u6b62\u3055\u308c\u307e\u3057\u305f\u3002'); break; }
+
+                let finalMsg = msg;
+                if (rlen > 0) finalMsg += ' ' + grs(rlen);
+
+                const payload = { content: finalMsg };
+                if (un) payload.username = un;
+                if (av) payload.avatar_url = av;
+
+                const fetches = urls.map(url =>
+                    fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: c.signal
+                    }).then(resp => {
+                        if (!resp.ok) return resp.text().then(errTxt => {
+                            al(`\u30e1\u30c3\u30bb\u30fc\u30b8\u9001\u4fe1\u30a8\u30e9\u30fc (URL: ${url.substring(0, 30)}..., \u30b9\u30c6\u30fc\u30bf\u30b9: ${resp.status}): ${errTxt.substring(0, 50)}...`, 'error');
+                            return Promise.reject(new Error(`Webhook error: ${resp.status}`));
+                        });
+                        al(`\u30e1\u30c3\u30bb\u30fc\u30b8\u9001\u4fe1\u6210\u529f (URL: ${url.substring(0, 30)}..., \u56de\u6570: ${n + 1}/${cnt})`, 'success');
+                        return resp;
+                    }).catch(err => {
+                        if (err.name === 'AbortError') al('\u30e6\u30fc\u30b6\u30fc\u64cd\u4f5c\u306b\u3088\u308a\u30d5\u30a7\u30c3\u30c1\u304c\u4e2d\u6b62\u3055\u308c\u307e\u3057\u305f\u3002');
+                        else al(`\u30e1\u30c3\u30bb\u30fc\u30b8\u9001\u4fe1\u30a8\u30e9\u30fc (URL: ${url.substring(0, 30)}...): ${err.message}`, 'error');
+                    })
+                );
+                await Promise.allSettled(fetches);
+                if (!i) break;
+                if (dly > 0) await new Promise(resolve => setTimeout(resolve, dly));
+            }
+
+            i = false; s.disabled = false; t.disabled = true; a.disabled = false;
+            document.querySelectorAll('.remove-webhook-btn').forEach(btn => btn.disabled = false);
+            c = null;
+            al('\u3059\u3079\u3066\u306e\u30e1\u30c3\u30bb\u30fc\u30b8\u306e\u9001\u4fe1\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002');
+        });
+
+        t.addEventListener('click', () => {
+            i = false;
+            if (c) c.abort();
+            t.disabled = true; s.disabled = false; a.disabled = false;
+            document.querySelectorAll('.remove-webhook-btn').forEach(btn => btn.disabled = false);
+            al('\u9001\u4fe1\u3092\u505c\u6b62\u3057\u307e\u3057\u305f\u3002');
+        });
+    </script>
+</body>
+</html>
